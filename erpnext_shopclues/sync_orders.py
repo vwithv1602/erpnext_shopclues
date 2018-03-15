@@ -137,7 +137,7 @@ def valid_customer_and_product(parsed_order):
     for item in shopclues_order.get("line_items"):
         if not frappe.db.get_value("Item", {"shopclues_product_id": item.get("product_id")}, "name"):
             item = get_request("/admin/products/{}.json".format(item.get("product_id")))["product"]
-            make_item(warehouse, item, shopify_item_list=[])
+            make_item(warehouse, item, shopclues_item_list=[])
 
     return True
 

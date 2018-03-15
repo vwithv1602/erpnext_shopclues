@@ -14,7 +14,7 @@ def sync_shopclues():
 
 @frappe.whitelist()
 def sync_shopclues_resources():
-    "Enqueue longjob for syncing shopify"
+    "Enqueue longjob for syncing shopclues"
     shopclues_settings = frappe.get_doc("Shopclues Settings")
     make_shopclues_log(title="Shopclues Sync Job Queued", status="Queued", method=frappe.local.form_dict.cmd,
                      message="Shopclues Sync Job Queued")
@@ -28,7 +28,7 @@ def sync_shopclues_resources():
             frappe.db.set_value("Shopclues Settings", None, "last_sync_datetime", now_time)
 
             make_shopclues_log(title="Sync Completed", status="Success", method=frappe.local.form_dict.cmd,
-                             message="Shopify sync successfully completed")
+                             message="Shopclues sync successfully completed")
         except Exception, e:
             if e.args[0] and hasattr(e.args[0], "startswith") and e.args[0].startswith("402"):
                 make_shopclues_log(title="Shopclues has suspended your account", status="Error",

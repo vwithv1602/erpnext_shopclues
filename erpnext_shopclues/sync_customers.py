@@ -7,16 +7,16 @@ from .utils import make_shopclues_log
 from vlog import vwrite
 
 # def sync_customers():
-# 	shopify_customer_list = []
-# 	sync_shopify_customers(shopify_customer_list)
-# 	frappe.local.form_dict.count_dict["customers"] = len(shopify_customer_list)
+# 	shopclues_customer_list = []
+# 	sync_shopclues_customers(shopclues_customer_list)
+# 	frappe.local.form_dict.count_dict["customers"] = len(shopclues_customer_list)
 #
-# 	sync_erpnext_customers(shopify_customer_list)
+# 	sync_erpnext_customers(shopclues_customer_list)
 #
-# def sync_shopify_customers(shopify_customer_list):
-# 	for shopify_customer in get_shopify_customers():
-# 		if not frappe.db.get_value("Customer", {"shopify_customer_id": shopify_customer.get('id')}, "name"):
-# 			create_customer(shopify_customer, shopify_customer_list)
+# def sync_shopclues_customers(shopclues_customer_list):
+# 	for shopclues_customer in get_shopclues_customers():
+# 		if not frappe.db.get_value("Customer", {"shopclues_customer_id": shopclues_customer.get('id')}, "name"):
+# 			create_customer(shopclues_customer, shopclues_customer_list)
 
 def create_customer(parsed_order, shopclues_customer_list):
 	cust_id = parsed_order.get("customer_details").get("buyer_id")
@@ -27,7 +27,7 @@ def create_customer(parsed_order, shopclues_customer_list):
 			"name": cust_id,
 			"customer_name" : cust_name,
 			"shopclues_customer_id": cust_id,
-			# "sync_with_shopify": 1,
+			# "sync_with_shopclues": 1,
 			# "customer_group": shopclues_settings.customer_group,
 			# "territory": frappe.utils.nestedset.get_root_of("Territory"),
 			"customer_type": _("Individual")
@@ -156,27 +156,27 @@ def get_address_title_and_type(customer_name, index):
 		
 	return address_title, address_type 
 	
-def sync_erpnext_customers(shopify_customer_list):
-	shopify_settings = frappe.get_doc("Shopify Settings", "Shopify Settings")
+def sync_erpnext_customers(shopclues_customer_list):
+	shopclues_settings = frappe.get_doc("Shopclues Settings", "Shopclues Settings")
 	
-	condition = ["sync_with_shopify = 1"]
+	condition = ["sync_with_shopclues = 1"]
 	
 	last_sync_condition = ""
-	if shopify_settings.last_sync_datetime:
-		last_sync_condition = "modified >= '{0}' ".format(shopify_settings.last_sync_datetime)
+	if shopclues_settings.last_sync_datetime:
+		last_sync_condition = "modified >= '{0}' ".format(shopclues_settings.last_sync_datetime)
 		condition.append(last_sync_condition)
 	
-	customer_query = """select name, customer_name, shopify_customer_id from tabCustomer 
+	customer_query = """select name, customer_name, shopclues_customer_id from tabCustomer 
 		where {0}""".format(" and ".join(condition))
 		
 	for customer in frappe.db.sql(customer_query, as_dict=1):
 		try:
-			if not customer.shopify_customer_id:
-				create_customer_to_shopify(customer)
+			if not customer.shopclues_customer_id:
+				create_customer_to_shopclues(customer)
 			
 			else:
-				if customer.shopify_customer_id not in shopify_customer_list:
-					update_customer_to_shopify(customer, shopify_settings.last_sync_datetime)
+				if customer.shopclues_customer_id not in shopclues_customer_list:
+					update_customer_to_shopclues(customer, shopclues_settings.last_sync_datetime)
 			
 			frappe.local.form_dict.count_dict["customers"] += 1
 			frappe.db.commit()
@@ -184,15 +184,15 @@ def sync_erpnext_customers(shopify_customer_list):
 			make_shopclues_log(title=e.message, status="Error", method="sync_erpnext_customers", message=frappe.get_traceback(),
 				request_data=customer, exception=True)
 
-def create_customer_to_shopify(customer):
-	shopify_customer = {
+def create_customer_to_shopclues(customer):
+	shopclues_customer = {
 		"first_name": customer['customer_name'],
 	}
 	
-	shopify_customer = post_request("/admin/customers.json", { "customer": shopify_customer})
+	shopclues_customer = post_request("/admin/customers.json", { "customer": shopclues_customer})
 	
 	customer = frappe.get_doc("Customer", customer['name'])
-	customer.shopify_customer_id = shopify_customer['customer'].get("id")
+	customer.shopclues_customer_id = shopclues_customer['customer'].get("id")
 	
 	customer.flags.ignore_mandatory = True
 	customer.save()
@@ -204,29 +204,29 @@ def create_customer_to_shopify(customer):
 def sync_customer_address(customer, address):
 	address_name = address.pop("name")
 
-	shopify_address = post_request("/admin/customers/{0}/addresses.json".format(customer.shopify_customer_id),
+	shopclues_address = post_request("/admin/customers/{0}/addresses.json".format(customer.shopclues_customer_id),
 	{"address": address})
 		
 	address = frappe.get_doc("Address", address_name)
-	address.shopify_address_id = shopify_address['customer_address'].get("id")
+	address.shopclues_address_id = shopclues_address['customer_address'].get("id")
 	address.save()
 	
-def update_customer_to_shopify(customer, last_sync_datetime):
-	shopify_customer = {
+def update_customer_to_shopclues(customer, last_sync_datetime):
+	shopclues_customer = {
 		"first_name": customer['customer_name'],
 		"last_name": ""
 	}
 	
 	try:
-		put_request("/admin/customers/{0}.json".format(customer.shopify_customer_id),\
-			{ "customer": shopify_customer})
+		put_request("/admin/customers/{0}.json".format(customer.shopclues_customer_id),\
+			{ "customer": shopclues_customer})
 		update_address_details(customer, last_sync_datetime)
 		
 	except requests.exceptions.HTTPError, e:
 		if e.args[0] and e.args[0].startswith("404"):
 			customer = frappe.get_doc("Customer", customer.name)
-			customer.shopify_customer_id = ""
-			customer.sync_with_shopify = 0
+			customer.shopclues_customer_id = ""
+			customer.sync_with_shopclues = 0
 			customer.flags.ignore_mandatory = True
 			customer.save()
 		else:
@@ -235,13 +235,13 @@ def update_customer_to_shopify(customer, last_sync_datetime):
 def update_address_details(customer, last_sync_datetime):
 	customer_addresses = get_customer_addresses(customer, last_sync_datetime)
 	for address in customer_addresses:
-		if address.shopify_address_id:
-			url = "/admin/customers/{0}/addresses/{1}.json".format(customer.shopify_customer_id,\
-			address.shopify_address_id)
+		if address.shopclues_address_id:
+			url = "/admin/customers/{0}/addresses/{1}.json".format(customer.shopclues_customer_id,\
+			address.shopclues_address_id)
 			
-			address["id"] = address["shopify_address_id"]
+			address["id"] = address["shopclues_address_id"]
 			
-			del address["shopify_address_id"]
+			del address["shopclues_address_id"]
 			
 			put_request(url, { "address": address})
 			
@@ -258,7 +258,7 @@ def get_customer_addresses(customer, last_sync_datetime=None):
 	
 	address_query = """select addr.name, addr.address_line1 as address1, addr.address_line2 as address2,
 		addr.city as city, addr.state as province, addr.country as country, addr.pincode as zip,
-		addr.shopify_address_id from tabAddress addr, `tabDynamic Link` dl
+		addr.shopclues_address_id from tabAddress addr, `tabDynamic Link` dl
 		where {0}""".format(' and '.join(conditions))
 			
 	return frappe.db.sql(address_query, as_dict=1)
