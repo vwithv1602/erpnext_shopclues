@@ -57,14 +57,10 @@ def create_customer_address(parsed_order, shopclues_customer):
 					  request_data=parsed_order.get("customer_details").get("buyer_email"), exception=True)
 	else:
 		try:
-			# if shopclues_order.get("ShippingAddress").get("Street1"):
-			# 	address_line1 = shopclues_order.get("ShippingAddress").get("Street1").replace("'", "")
-			# else:
-			# 	address_line1 = shopclues_order.get("ShippingAddress").get("Street1")
-			# if shopclues_order.get("ShippingAddress").get("Street2"):
-			# 	address_line2 = shopclues_order.get("ShippingAddress").get("Street2").replace("'", "")
-			# else:
-			# 	address_line2 = shopclues_order.get("ShippingAddress").get("Street2")
+			if parsed_order.get("customer_details").get("buyer_address_line1"):
+				address_line1 = parsed_order.get("customer_details").get("buyer_address_line1").replace("'", "")
+			else:
+				address_line1 = "NA"
 			if not frappe.db.get_value("Address",
 									   {"shopclues_address_id": parsed_order.get("customer_details").get("buyer_email")}, "name"):
 				frappe.get_doc({
@@ -72,14 +68,14 @@ def create_customer_address(parsed_order, shopclues_customer):
 					"shopclues_address_id": parsed_order.get("customer_details").get("buyer_email"),
 					"address_title": parsed_order.get("customer_details").get("buyer_name"),
 					"address_type": "Shipping",
-					# "address_line1": address_line1,
+					"address_line1": address_line1,
 					# "address_line2": address_line2,
 					"city": parsed_order.get("customer_details").get("buyer_city"),
 					"state": parsed_order.get("customer_details").get("buyer_state"),
 					"pincode": parsed_order.get("customer_details").get("buyer_zipcode"),
 					# "country": shopclues_order.get("ShippingAddress").get("Country"),
 					"country": None,
-					"phone": "NA",
+					"phone": parsed_order.get("customer_details").get("buyer_phone"),
 					"email_id": parsed_order.get("customer_details").get("buyer_email"),
 					"links": [{
 						"link_doctype": "Customer",

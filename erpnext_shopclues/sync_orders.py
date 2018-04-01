@@ -9,12 +9,14 @@ import frappe
 from .sync_customers import create_customer,create_customer_address,create_customer_contact
 from frappe.utils import flt, nowdate, cint
 from .shopclues_item_common_functions import get_oldest_serial_number
-# from .shopclues_requests import get_request, get_filtering_condition
+from .shopclues_requests import get_request, get_filtering_condition, post_request
 from vlog import vwrite
 
 from parse_erpnext_connector.parse_orders import parse_order
 
 shopclues_settings = frappe.get_doc("Shopclues Settings", "Shopclues Settings")
+from frappe.utils.password import get_decrypted_password
+shopclues_settings.password = get_decrypted_password('Shopclues Settings', 'Shopclues Settings', 'password', False)
 if shopclues_settings.last_sync_datetime:
     startTimeString = shopclues_settings.last_sync_datetime
     startTimeString = startTimeString[:19]
@@ -28,46 +30,12 @@ def sync_orders():
     sync_shopclues_orders()
 def get_shopclues_orders(ignore_filter_conditions=False):
     shopclues_orders = []
-    vwrite("Call shopclues api instead of this sample order")
-    shopclues_orders = [
-        {
-        "order_id": "76996265",
-        "user_id": "11028919",
-        "is_parent_order": "N",
-        "exempt_from_billing": "0",
-        "parent_order_id": "0",
-        "company_id": "1",
-        "timestamp": "1448879008",
-        "firstname": "Lokesh",
-        "lastname": "Singh",
-        "email": "lokesh.mnit@gmail.com",
-        "status": "E",
-        "total": "34.00",
-        "subtotal": "10.00",
-        "details": "Delivery Region: Delhi NCR \n",
-        "net_payout": None,
-        "payment_id": "6",
-        "s_city": "Gurgaon",
-        "s_state": "HR",
-        "s_zipcode": "122001",
-        "label_printed": "n",
-        "gift_it": "N",
-        "items_list": [
-            {
-            "product": "Product-Test-Crestech-4",
-            "product_id": "78363196",
-            "amount": "1",
-            "selling_price": "10.00",
-            "image_path": "cdn.shopclues.com/images/thumbnails/18875/160/160/imagetest1433145582.jpg"
-            }
-        ]
-        }
-    ]
-    # params = {'CreateTimeFrom': startTime, 'CreateTimeTo': endTime, 'OrderStatus': 'Completed'}
-    # orders = get_request('GetOrders', 'trading', params)
-    # if orders.get("OrderArray"):
-    #     shopclues_orders = orders.get("OrderArray").get("Order")
-    return shopclues_orders
+    all_orders_response = post_request("get_all_orders",shopclues_settings)
+    orders = all_orders_response.get("data")
+    if orders and (len(orders) > 0):
+        return orders
+    else:
+        return []
 def check_shopclues_sync_flag_for_item(shopclues_product_id):
     sync_flag = False
     sync_flag_query = """select sync_with_shopclues from tabItem where shopclues_product_id='%s' or shopclues_product_id like '%s' or shopclues_product_id like '%s' or shopclues_product_id like '%s'""" % (shopclues_product_id,shopclues_product_id+",%","%,"+shopclues_product_id+",%","%,"+shopclues_product_id)
@@ -81,43 +49,50 @@ def check_shopclues_sync_flag_for_item(shopclues_product_id):
         vwrite("Exception raised in check_shopclues_sync_flag_for_item")
         vwrite(e)
     return sync_flag
+
+def get_shopclues_order_details_by_id(order_id):
+    order_response = post_request("get_order_by_id",shopclues_settings,{'order_id':order_id})
+    return order_response.get("data")
 def sync_shopclues_orders():
     frappe.local.form_dict.count_dict["orders"] = 0
     get_shopclues_orders_array = get_shopclues_orders()
     for shopclues_order in get_shopclues_orders_array:
-        vwrite(shopclues_order)
-        parsed_order = parse_order("shopclues",shopclues_order)
-        vwrite(parsed_order)
-        shopclues_item_id = parsed_order.get("item_details").get("item_id")
-        is_item_in_sync = check_shopclues_sync_flag_for_item(shopclues_item_id)
-        if(is_item_in_sync):
-            if valid_customer_and_product(parsed_order):
-                try:
-                    create_order(parsed_order, shopclues_settings)
-                    frappe.local.form_dict.count_dict["orders"] += 1
+        if shopclues_order.get("status")=='Q':
+            shopclues_order_details = get_shopclues_order_details_by_id(shopclues_order.get("order_id"))
+            parsed_order = parse_order("shopclues",shopclues_order_details)
+            shopclues_item_id = parsed_order.get("item_details").get("item_id")
+            is_item_in_sync = check_shopclues_sync_flag_for_item(shopclues_item_id)            
+            if(is_item_in_sync):
+                if valid_customer_and_product(parsed_order):
+                    try:
+                        create_order(parsed_order, shopclues_settings)
+                        frappe.local.form_dict.count_dict["orders"] += 1
 
-                except ShopcluesError, e:
-                    vwrite("ShopcluesError raised in create_order")
-                    vwrite(shopclues_order)
-                    make_shopclues_log(status="Error", method="sync_shopclues_orders", message=frappe.get_traceback(),
-                                     request_data=shopclues_order.get("OrderID"), exception=True)
-                except Exception, e:
-                    vwrite("Exception raised in create_order")
-                    vwrite(e)
-                    vwrite(parsed_order)
-                    if e.args and e.args[0]:
-                        raise e
-                    else:
-                        make_shopclues_log(title=e.message, status="Error", method="sync_shopclues_orders",
-                                         message=frappe.get_traceback(),
-                                         request_data=shopclues_order.get("OrderID"), exception=True)
+                    except ShopcluesError, e:
+                        vwrite("ShopcluesError raised in create_order")
+                        vwrite(shopclues_order)
+                        make_shopclues_log(status="Error", method="sync_shopclues_orders", message=frappe.get_traceback(),
+                                        request_data=shopclues_order.get("OrderID"), exception=True)
+                    except Exception, e:
+                        vwrite("Exception raised in create_order")
+                        vwrite(e)
+                        vwrite(parsed_order)
+                        if e.args and e.args[0]:
+                            raise e
+                        else:
+                            make_shopclues_log(title=e.message, status="Error", method="sync_shopclues_orders",
+                                            message=frappe.get_traceback(),
+                                            request_data=shopclues_order.get("OrderID"), exception=True)
+                else:
+                    vwrite("Not valid customer and product")
             else:
-                vwrite("Not valid customer and product")
+                vwrite("Item not in sync: %s" % parsed_order.get("item_details").get("all_items").get("product"))
+                make_shopclues_log(title="%s" % parsed_order.get("item_details").get("all_items").get("product"), status="Error", method="sync_shopclues_orders",
+                                request_data=shopclues_order.get("OrderID"),message="Sales order item is not in sync with erp. Sales Order: %s " % shopclues_order.get(
+                                    "OrderID"))
         else:
-            vwrite("Item not in sync: %s" % shopclues_order.get("TransactionArray").get("Transaction")[0].get("Item").get("Title"))
-            make_shopclues_log(title="%s" % shopclues_order.get("TransactionArray").get("Transaction")[0].get("Item").get("Title"), status="Error", method="sync_shopclues_orders",
-                             request_data=shopclues_order.get("OrderID"),message="Sales order item is not in sync with erp. Sales Order: %s " % shopclues_order.get(
-                                 "OrderID"))
+            vwrite("No active orders")
+        
 
 def valid_customer_and_product(parsed_order):
     shopclues_order = None
@@ -168,7 +143,7 @@ def create_sales_order(parsed_order, shopclues_settings, company=None):
                 "naming_series": shopclues_settings.sales_order_series or "SO-Shopclues-",
                 "is_cod": is_cod,
                 "shopclues_order_id": parsed_order.get("order_details").get("order_id"),
-		"shopclues_buyer_id": parsed_order.get("customer_details").get("buyer_id"),
+		        "shopclues_buyer_id": parsed_order.get("customer_details").get("buyer_id"),
                 "customer": frappe.db.get_value("Customer",
                                                 {"shopclues_customer_id": parsed_order.get("customer_details").get("buyer_id")}, "name"),
                 "delivery_date": delivery_date,
@@ -178,11 +153,12 @@ def create_sales_order(parsed_order, shopclues_settings, company=None):
                 "ignore_pricing_rule": 1,
                 "items": get_order_items(parsed_order.get("item_details").get("all_items"), shopclues_settings),
                 "item_serial_no": serial_number
+
                 # "taxes": get_order_taxes(shopclues_order.get("TransactionArray").get("Transaction"), shopclues_settings),
                 # "apply_discount_on": "Grand Total",
                 # "discount_amount": get_discounted_amount(shopclues_order),
             })
-            
+
             if company:
                 so.update({
                     "company": company,
@@ -244,6 +220,7 @@ def get_order_items(order_items, shopclues_settings):
                               message="Item not found for %s" %(shopclues_item.get("Item").get("ItemID")),request_data=shopclues_item.get("Item").get("ItemID"))
         items.append({
             "item_code": item_code,
+            "description": shopclues_item.get("product"),
             "item_name": shopclues_item.get("product"),
             "rate": shopclues_item.get("selling_price"),
             "qty": shopclues_item.get("amount"),
