@@ -63,7 +63,6 @@ def post_request(path, settings, params=None):
 		return url
 
 	shopclues_url = get_shopclues_url(path,params)
-	vwrite(shopclues_url)
 	# >> getting oAuth token
 	s = get_request_session()
 	url = "https://auth.shopclues.com/loginToken.php"

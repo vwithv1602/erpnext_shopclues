@@ -32,6 +32,8 @@ def get_shopclues_orders(ignore_filter_conditions=False):
     shopclues_orders = []
     all_orders_response = post_request("get_all_orders",shopclues_settings)
     orders = all_orders_response.get("data")
+    vwrite("orders")
+    vwrite(orders)
     if orders and (len(orders) > 0):
         return orders
     else:
